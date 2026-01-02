@@ -40,53 +40,6 @@ def cluster_contrast(fushed,centroid,labels):
 
     return I2C_loss
 
-class CLUBSample_group(nn.Module):  # Sampled version of the CLUB estimator
-    def __init__(self, x_dim, y_dim, hidden_size):
-        super(CLUBSample_group, self).__init__()
-        self.x_dim = x_dim
-        self.y_dim = y_dim
-        self.hidden_size = hidden_size
-        self.p_mu = nn.Sequential(nn.Linear(self.x_dim, self.hidden_size // 2),
-                                  nn.ReLU(),
-                                  nn.Linear(self.hidden_size // 2, self.hidden_size // 2),
-                                  nn.ReLU(),
-                                  nn.Linear(self.hidden_size // 2, self.hidden_size // 2),
-                                  nn.ReLU(),
-                                  nn.Linear(self.hidden_size // 2, self.y_dim))
-
-        self.p_logvar = nn.Sequential(nn.Linear(self.x_dim, self.hidden_size // 2),
-                                      nn.ReLU(),
-                                      nn.Linear(self.hidden_size // 2, self.hidden_size // 2),
-                                      nn.ReLU(),
-                                      nn.Linear(self.hidden_size // 2, self.hidden_size // 2),
-                                      nn.ReLU(),
-                                      nn.Linear(self.hidden_size // 2, self.y_dim),
-                                      nn.Tanh())
-
-    def get_mu_logvar(self, x_samples):
-        mu = self.p_mu(x_samples)
-        logvar = self.p_logvar(x_samples)
-        return mu, logvar
-
-    def loglikeli(self, x_samples, y_samples):  # unnormalized loglikelihood
-        mu, logvar = self.get_mu_logvar(x_samples)
-
-        return (-(mu - y_samples) ** 2 / logvar.exp() - logvar).sum(dim=1).mean(dim=0) / 2
-
-    def mi_est(self, x_samples, y_samples):  # x_samples: (bs, x_dim); y_samples: (bs, T, y_dim)
-
-        mu, logvar = self.get_mu_logvar(x_samples)
-
-        sample_size = x_samples.shape[0]
-        # random_index = torch.randint(sample_size, (sample_size,)).long()
-        random_index = torch.randperm(sample_size).long()
-
-        mu_exp1 = mu
-
-        positive = - ((mu_exp1 - y_samples) ** 2).mean(dim=1) / logvar.mean(dim=1).exp()  # mean along T
-        negative = - ((mu_exp1 - y_samples[random_index]) ** 2).mean(dim=1) / logvar.mean(dim=1).exp()  # mean along T
-
-        return (positive.sum(dim=-1) - negative.sum(dim=-1)).mean() / 2
 
 from sklearn import metrics
 from sklearn.metrics.cluster._supervised import contingency_matrix
@@ -153,4 +106,5 @@ def calculate_metrics(y, y_pred):
     # f_score = np.round(f_score, 4)
     #wandb.log({'Accuracy': acc, 'MNI': nmi, 'F': f, 'purity': purity})
     #return acc, ar, nmi, f, p, r, purity
+
     return acc, nmi, f, purity
