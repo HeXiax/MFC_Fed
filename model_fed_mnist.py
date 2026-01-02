@@ -14,10 +14,10 @@ from fast_pytorch_kmeans import KMeans as KMeansP
 from torch.autograd import Variable
 from tqdm import tqdm
 from function import DiffLoss
-from utils.model_utils import read_mv_mnist
+from model_utils import read_mv_mnist
 from os import path, makedirs
 import copy
-from utils.model_utils import read_user_mv_mnist
+from model_utils import read_user_mv_mnist
 from sklearn.metrics.pairwise import cosine_similarity
 from torch.nn.parameter import Parameter
 from function import calculate_metrics
@@ -572,6 +572,7 @@ if __name__ == '__main__':
     main(args, config, data, args.n_sample, trial_dir, device)
     end = time.time()
     print(f'Running time: {end - start} Seconds')
+
 
 
 
