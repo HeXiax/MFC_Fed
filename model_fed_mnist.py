@@ -9,19 +9,15 @@ from torch.utils.data import DataLoader
 from sklearn.cluster import KMeans
 from sklearn.metrics.cluster import normalized_mutual_info_score as NMI
 import random
-from FLAlgorithms.trainmodel.functions import ReverseLayerF
 import wandb
 from fast_pytorch_kmeans import KMeans as KMeansP
 from torch.autograd import Variable
-from FLAlgorithms.trainmodel.marginloss import ArcMarginProduct
 from tqdm import tqdm
 from function import DiffLoss
-from function import CLUBSample_group
 from utils.model_utils import read_mv_mnist
 from os import path, makedirs
 import copy
 from utils.model_utils import read_user_mv_mnist
-from utils.model_utils import read_user_data_sort
 from sklearn.metrics.pairwise import cosine_similarity
 from torch.nn.parameter import Parameter
 from function import calculate_metrics
@@ -126,43 +122,6 @@ class Net_Private(nn.Module):
         return result
 
 
-def spread_out_loss(embeddings):
-
-    embeddings_class = embeddings.shape[0]
-    gram_matrix = torch.mul(embeddings, embeddings)
-    gram_matrix = torch.diag(gram_matrix)
-    a_diag = torch.diag_embed(gram_matrix)
-    gram_matrix = gram_matrix - a_diag
-    loss = torch.sum(gram_matrix.pow(2)) / (embeddings_class * (embeddings_class - 1))
-    return loss
-
-def get_next_train_batch(train_loader,device):
-    try:
-        # Samples a new batch for persionalizing
-        (X, y) = next(iter(train_loader))  # 指针指向下一条记录
-        X = X.to(device)
-        y = y.to(device)
-    except StopIteration:
-        # restart the generator if the previous generator is exhausted.
-        (X, y) = next(iter(train_loader))
-        X = X.to(device)
-        y = y.to(device)
-    return (X, y)
-
-def get_next_train_sort(train_loader,device):
-    try:
-        # Samples a new batch for persionalizing
-        (X, y, idx_y) = next(iter(train_loader))  # 指针指向下一条记录
-        X = X.to(device)
-        y = y.to(device)
-        idx_y = idx_y.to(device)
-    except StopIteration:
-        # restart the generator if the previous generator is exhausted.
-        (X, y, idx_y) = next(iter(train_loader))
-        X = X.to(device)
-        y = y.to(device)
-        idx_y = idx_y.to(device)
-    return (X, y, idx_y)
 
 def get_centroids(latent_z, nClusters):
     kmeans = KMeans(n_clusters = nClusters).fit(latent_z)
@@ -186,14 +145,14 @@ def get_global_centroids(args, Nets, data, device):
                 z = torch.cat([share_z, private_z], dim=1)
                 latent_z.append(z)
 
-        latent_z = torch.cat(latent_z).cpu().numpy()  # 拼接特征向量
+        latent_z = torch.cat(latent_z).cpu().numpy()  
         local_latent_z_ls.append(latent_z)
 
         local_centroids = get_centroids(latent_z, args.k)
-        local_centroids_ls.append(local_centroids)  # 每个客户端的聚类中心
+        local_centroids_ls.append(local_centroids)  
     global_centroids = np.mean(local_centroids_ls, axis=0)
-    # local_centroids_all = np.concatenate(local_centroids_ls)  ##check here 所有客户端的聚类中心的拼接
-    # global_centroids = get_centroids(local_centroids_all, args.k)  # K-Means获取全局聚类中心
+    # local_centroids_all = np.concatenate(local_centroids_ls) 
+    # global_centroids = get_centroids(local_centroids_all, args.k)  
     return global_centroids
 
 
@@ -258,7 +217,7 @@ def train_ae(args, config, data, num_sample, trial_dir, device):
 
     save_path = path.join(trial_dir, f"model_pretrain_mnist.pt")
     if not path.exists(save_path):
-        # 初始化每个客户端的模型和优化器
+      
         for idx in range(args.numusers):
             Nets[f'model_{idx}'] = Net(config['in_dim'], config['hiddens_dim'], args).to(device)
             Nets[f'model_private_{idx}'] = Net_Private(config['in_dim'], config['hiddens_dim']).to(device)
@@ -268,13 +227,13 @@ def train_ae(args, config, data, num_sample, trial_dir, device):
             Nets[f'optim_decoder_{idx}'] = torch.optim.Adam(Nets[f'model_decoder_{idx}'].parameters(), lr=args.lr)
 
         print(f'pretraining on: {device}')
-        for g_epoch in range(3): #全局迭代次数，服务器端与客户端的交互次数
+        for g_epoch in range(5): 
             global_model.eval()
             global_w = global_model.state_dict()
             train_sample = []
             print(f'global epoch: {g_epoch}')
 
-            for idx in range(args.numusers): #每个客户端
+            for idx in range(args.numusers):
                 id, train_data = read_user_mv_mnist(idx, data)
                 trainloader = DataLoader(train_data, args.batch_size, shuffle=True)
                 len_dataloader = len(trainloader)
@@ -285,7 +244,7 @@ def train_ae(args, config, data, num_sample, trial_dir, device):
                 Nets[f'model_private_{idx}'].train()
                 Nets[f'model_decoder_{idx}'].train()
 
-                for epoch in range(1, args.local_epochs + 1): #每个客户端的本地训练次数
+                for epoch in range(1, args.local_epochs + 1): 
                     i = 0
                     total_loss = 0
                     latent_z = []
@@ -304,7 +263,7 @@ def train_ae(args, config, data, num_sample, trial_dir, device):
                         loss = 0
 
                         private_result = Nets[f'model_private_{idx}'](x)
-                        # 私有编码与私有分类
+                        
                         private_code, class_label_private = private_result
 
                         share_result = Nets[f'model_{idx}'](x)
@@ -317,7 +276,7 @@ def train_ae(args, config, data, num_sample, trial_dir, device):
 
                         latent_z.append(latent_private_share)
 
-                        diff = args.beta_weight * loss_diff(private_code, share_code)  # 计算两个编码之间的差异
+                        diff = args.beta_weight * loss_diff(private_code, share_code)  
                         loss += diff
 
                         loss.backward()
@@ -358,7 +317,7 @@ def train_ae(args, config, data, num_sample, trial_dir, device):
         torch.save(global_model.state_dict(), save_path)
 
     checkpoint = torch.load(save_path, map_location=device)
-    global_model.load_state_dict(checkpoint)  # 加载预训练模型
+    global_model.load_state_dict(checkpoint)  
     for idx in range(args.numusers):
         checkpoint_share = torch.load(path.join(trial_dir, f"model_{idx}.pt"), map_location=device)
         Nets[f'model_{idx}'] = Net(config['in_dim'], config['hiddens_dim'], args).to(device)
@@ -383,7 +342,7 @@ def main(args, config, data, num_sample, trial_dir, device):
 
     global_model = Net(config['in_dim'], config['hiddens_dim'], args).to(device)
     checkpoint = torch.load(save_path, map_location=device)
-    global_model.load_state_dict(checkpoint)  # 加载预训练模型
+    global_model.load_state_dict(checkpoint) 
 
     loss_diff = DiffLoss().to(device)
 
@@ -434,14 +393,7 @@ def main(args, config, data, num_sample, trial_dir, device):
 
             kmeans_s_p = KMeans(n_clusters=args.k)
             y_pred_s_p = kmeans_s_p.fit_predict(latent_z.cpu().numpy())
-            #local_centroids_ls.append(kmeans_s_p.cluster_centers_)
-
-
-            print('--------------------validation--------------')
-            print(f'num_user:{idx} | acc: {cluster_acc(y_pred, labels)[0]: .4f} | nmi: {NMI(y_pred, labels): .4f}')
-            print(f'num_user:{idx} | acc_share: {cluster_acc(y_pred_share, labels)[0]: .4f} | nmi_share: {NMI(y_pred_share, labels): .4f}')
-        # local_centroids_all = np.concatenate(local_centroids_ls)  ##check here 所有客户端的聚类中心的拼接
-        # global_centroids = get_centroids(local_centroids_all, args.k)  # K-Means获取全局聚类中心
+ 
         global_centroids = get_global_centroids(args, Nets, data, device)
         pseudo_labels, acc, nmi = clustering_by_cosine_similarity(args, data, Nets, global_centroids, device)
         global_centroids = torch.tensor(global_centroids).to(device)
@@ -509,13 +461,13 @@ def main(args, config, data, num_sample, trial_dir, device):
                 loss_recon = F.mse_loss(input_data, x_recon)
                 loss += loss_recon
 
-                diff = args.beta_weight * loss_diff(private_code, share_code)  # 计算两个编码之间的差异
+                diff = args.beta_weight * loss_diff(private_code, share_code) 
                 loss += diff
 
                 kl_loss = F.kl_div(q.log(), p, reduction='batchmean')
                 kl_loss_private = F.kl_div(class_label_private.log(), p, reduction='batchmean')
                 kl_loss_shared = F.kl_div(class_label_shared.log(), p, reduction='batchmean')
-                #loss += 0.1 * kl_loss + 0.01 * kl_loss_private + 0.01 * kl_loss_shared
+                loss += 0.1 * kl_loss + 0.01 * kl_loss_private + 0.01 * kl_loss_shared
 
                 loss.backward()
                 Nets[f'optim_{idx}'].step()
@@ -535,20 +487,6 @@ def main(args, config, data, num_sample, trial_dir, device):
                 fs_ls.append(f)
                 purity_ls.append(purity)
 
-                print(f'num_user:{idx} | acc: {cluster_acc(y_pred, labels)[0]: .4f} | nmi: {NMI(y_pred, labels): .4f}')
-                accs.append(cluster_acc(y_pred, labels)[0])
-                print(
-                    f'num_user:{idx} | acc_q: {cluster_acc(q.detach().cpu().numpy().argmax(1), labels)[0]: .4f} | nmi: {NMI(q.detach().cpu().numpy().argmax(1), labels): .4f}')
-                print(f'num_user:{idx} | acc_p: {cluster_acc(p.detach().cpu().numpy().argmax(1), labels)[0]: .4f} | nmi: {NMI(p.detach().cpu().numpy().argmax(1), labels): .4f}')
-
-                # print(f'num_user:{idx} | acc: {cluster_acc(y_p, labels)[0]: .4f} | nmi: {NMI(y_p, labels): .4f}')
-                # print(f'num_user:{idx} | acc_share: {cluster_acc(y_s, labels)[0]: .4f} | nmi_share: {NMI(y_s, labels): .4f}')
-
-            # centroids_share = Nets[f'model_{idx}'].cluster_layer.data
-            # centroids_private = Nets[f'model_private_{idx}'].cluster_layer.data
-            # centroids = torch.cat((centroids_share, centroids_private), dim=1)
-            # local_centroids_all.append(centroids_share)
-            #print(f'num_user:{idx} | max_acc: {max(accs): .4f}')
             acc = max(acc_ls)
             nmi = nmi_ls[np.where(acc_ls == np.max(acc_ls))[0][0]]
             f = fs_ls[np.where(acc_ls == np.max(acc_ls))[0][0]]
@@ -558,7 +496,7 @@ def main(args, config, data, num_sample, trial_dir, device):
             nmi_g.append(nmi)
             fs_g.append(f)
             purity_g.append(purity)
-        # 输出acc_g中的平均值
+
         print(f'global epoch: {g_epoch} | acc: {np.mean(acc_g): .4f} | nmi: {np.mean(nmi_g): .4f} | f: {np.mean(fs_g): .4f} | purity: {np.mean(purity_g): .4f}')
 
         #local_centroids_all = torch.cat(local_centroids_all, 0)
@@ -628,12 +566,13 @@ if __name__ == '__main__':
     import time
 
     start = time.time()
-    # 客户端预训练，没有全局一致聚类约束
+
     train_ae(args, config, data, args.n_sample, trial_dir, device)
-    # 加入全局一致互补聚类约束
+
     main(args, config, data, args.n_sample, trial_dir, device)
     end = time.time()
     print(f'Running time: {end - start} Seconds')
+
 
 
 
