@@ -1,3 +1,8 @@
 # MFC_Fed
 
-' run python model_fed_mnist.py'
+```python  
+run model_fed_mnist.py 
+```
+
+
+
